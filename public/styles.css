@@ -387,6 +387,26 @@ body {
   gap: 16px;
 }
 
+.brief-actions {
+  margin-top: 16px;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+#brief-status[data-status='pending'] {
+  color: var(--accent);
+}
+
+#brief-status[data-status='success'] {
+  color: #2f9e68;
+}
+
+#brief-status[data-status='error'] {
+  color: #ff6b6b;
+}
+
 .brief-fields label {
   display: grid;
   gap: 8px;
@@ -427,6 +447,14 @@ body {
   border-radius: 12px;
   font-size: 12px;
   overflow-x: auto;
+}
+
+.brief-log {
+  margin-top: 40px;
+  display: grid;
+  grid-template-columns: minmax(240px, 320px) 1fr;
+  gap: 24px;
+  align-items: start;
 }
 
 .api {
@@ -492,6 +520,10 @@ footer {
   }
 
   .tracker {
+    grid-template-columns: 1fr;
+  }
+
+  .brief-log {
     grid-template-columns: 1fr;
   }
 }

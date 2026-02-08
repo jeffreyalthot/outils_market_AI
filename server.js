@@ -71,6 +71,8 @@ const catalog = [
 
 const activations = [];
 const MAX_ACTIVATIONS = 8;
+const briefs = [];
+const MAX_BRIEFS = 6;
 
 const findModule = (moduleId) => catalog.find((item) => item.id === moduleId);
 
@@ -227,6 +229,10 @@ const buildHtml = (clientId, hasCredentials) => `<!doctype html>
               <input id="brief-sources" type="text" placeholder="Ex: HubSpot, Stripe, GA4" />
             </label>
           </div>
+          <div class="brief-actions">
+            <button id="send-brief" class="select">Envoyer le brief</button>
+            <span id="brief-status" class="muted">Aucun brief transmis.</span>
+          </div>
         </div>
         <div class="brief-output">
           <div class="brief-header">
@@ -242,6 +248,19 @@ const buildHtml = (clientId, hasCredentials) => `<!doctype html>
   "sources": []
 }</code></pre>
           <p class="muted">Collez ce payload dans votre orchestrateur pour démarrer la mission.</p>
+        </div>
+      </section>
+
+      <section class="brief-log">
+        <div>
+          <p class="eyebrow">Briefs envoyés</p>
+          <h2>Historique récent</h2>
+          <p class="muted">Les derniers briefs envoyés vers l’API pour vos orchestrateurs.</p>
+        </div>
+        <div class="tracker-card">
+          <ul id="brief-log" class="tracker-list">
+            <li class="muted">Aucun brief envoyé.</li>
+          </ul>
         </div>
       </section>
 
@@ -270,6 +289,18 @@ const buildHtml = (clientId, hasCredentials) => `<!doctype html>
             <h3>GET /api/activations</h3>
             <p class="muted">Liste les derniers jetons générés.</p>
             <pre><code>curl -s http://localhost:3000/api/activations</code></pre>
+          </article>
+          <article class="api-card">
+            <h3>POST /api/briefs</h3>
+            <p class="muted">Enregistre un brief transmis par un agent IA.</p>
+            <pre><code>curl -X POST http://localhost:3000/api/briefs \
+  -H "Content-Type: application/json" \
+  -d '{"module":"audit-agent","context":"B2B SaaS","goals":"Activation","sources":["GA4"]}'</code></pre>
+          </article>
+          <article class="api-card">
+            <h3>GET /api/briefs</h3>
+            <p class="muted">Récupère les derniers briefs enregistrés.</p>
+            <pre><code>curl -s http://localhost:3000/api/briefs</code></pre>
           </article>
         </div>
       </section>
@@ -302,6 +333,9 @@ const buildHtml = (clientId, hasCredentials) => `<!doctype html>
       const copyBriefBtn = document.getElementById('copy-brief');
       const demoButton = document.getElementById('demo-activation');
       const activationLogEl = document.getElementById('activation-log');
+      const sendBriefBtn = document.getElementById('send-brief');
+      const briefStatusEl = document.getElementById('brief-status');
+      const briefLogEl = document.getElementById('brief-log');
       const hasCredentials = ${hasCredentials ? 'true' : 'false'};
 
       const setStatus = (message, status) => {
@@ -357,6 +391,39 @@ const buildHtml = (clientId, hasCredentials) => `<!doctype html>
         }
       };
 
+      const renderBriefLog = (entries) => {
+        briefLogEl.innerHTML = '';
+        if (!entries || entries.length === 0) {
+          const empty = document.createElement('li');
+          empty.className = 'muted';
+          empty.textContent = 'Aucun brief envoyé.';
+          briefLogEl.appendChild(empty);
+          return;
+        }
+        entries.forEach((entry) => {
+          const li = document.createElement('li');
+          li.innerHTML = \`
+            <div>
+              <strong>\${entry.moduleName || 'Module inconnu'}</strong>
+              <span class="muted">· \${entry.sources.join(', ') || 'Sans source'}</span>
+            </div>
+            <div class="muted">\${new Date(entry.createdAt).toLocaleString('fr-FR')}</div>
+            <code>\${entry.context || 'Brief sans contexte'}</code>
+          \`;
+          briefLogEl.appendChild(li);
+        });
+      };
+
+      const refreshBriefLog = async () => {
+        try {
+          const response = await fetch('/api/briefs');
+          const data = await response.json();
+          renderBriefLog(data.items || []);
+        } catch (error) {
+          console.warn('Unable to load briefs', error);
+        }
+      };
+
       const updateBriefPayload = () => {
         const moduleId = selectedItem ? selectedItem.id : null;
         const payload = {
@@ -402,6 +469,31 @@ const buildHtml = (clientId, hasCredentials) => `<!doctype html>
 
       [briefContextEl, briefGoalsEl, briefSourcesEl].forEach((input) => {
         input.addEventListener('input', updateBriefPayload);
+      });
+
+      sendBriefBtn.addEventListener('click', async () => {
+        const payload = JSON.parse(briefPayloadEl.textContent || '{}');
+        if (!payload.module) {
+          briefStatusEl.textContent = 'Sélectionnez un module avant d’envoyer le brief.';
+          briefStatusEl.dataset.status = 'error';
+          return;
+        }
+        briefStatusEl.textContent = 'Envoi du brief en cours…';
+        briefStatusEl.dataset.status = 'pending';
+        const response = await fetch('/api/briefs', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const result = await response.json();
+        if (!response.ok) {
+          briefStatusEl.textContent = result.error || 'Impossible d’envoyer le brief.';
+          briefStatusEl.dataset.status = 'error';
+          return;
+        }
+        briefStatusEl.textContent = 'Brief envoyé. Référence: ' + result.brief.id + '.';
+        briefStatusEl.dataset.status = 'success';
+        refreshBriefLog();
       });
 
       document.querySelectorAll('.select').forEach((button) => {
@@ -462,6 +554,7 @@ const buildHtml = (clientId, hasCredentials) => `<!doctype html>
 
       updateBriefPayload();
       refreshActivationLog();
+      refreshBriefLog();
     </script>
     ${
       hasCredentials
@@ -588,6 +681,16 @@ const recordActivation = (activation, mode) => {
   }
 };
 
+const recordBrief = (brief) => {
+  if (!brief) {
+    return;
+  }
+  briefs.unshift(brief);
+  if (briefs.length > MAX_BRIEFS) {
+    briefs.length = MAX_BRIEFS;
+  }
+};
+
 const server = http.createServer(async (req, res) => {
   const { method, url } = req;
 
@@ -614,6 +717,11 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (method === 'GET' && url === '/api/briefs') {
+    sendJson(res, 200, { items: briefs });
+    return;
+  }
+
   if (method === 'POST' && url === '/api/demo-activation') {
     let body = '';
     req.on('data', (chunk) => {
@@ -631,6 +739,38 @@ const server = http.createServer(async (req, res) => {
         });
         recordActivation(activation, 'demo');
         sendJson(res, 200, { activation, demo: true });
+      } catch (error) {
+        sendJson(res, 500, { error: error.message });
+      }
+    });
+    return;
+  }
+
+  if (method === 'POST' && url === '/api/briefs') {
+    let body = '';
+    req.on('data', (chunk) => {
+      body += chunk;
+    });
+    req.on('end', () => {
+      try {
+        const { module, moduleName, outputs, context, goals, sources } = JSON.parse(body || '{}');
+        if (!module) {
+          sendJson(res, 400, { error: 'Missing module' });
+          return;
+        }
+        const resolved = findModule(module);
+        const brief = {
+          id: `BRF-${Date.now().toString(36).toUpperCase()}`,
+          module,
+          moduleName: moduleName || resolved?.name || module,
+          outputs: Array.isArray(outputs) ? outputs : [],
+          context: context || '',
+          goals: goals || '',
+          sources: Array.isArray(sources) ? sources : [],
+          createdAt: new Date().toISOString()
+        };
+        recordBrief(brief);
+        sendJson(res, 200, { brief });
       } catch (error) {
         sendJson(res, 500, { error: error.message });
       }
