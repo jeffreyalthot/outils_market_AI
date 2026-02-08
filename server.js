@@ -37,18 +37,24 @@ const catalog = [
     id: 'audit-agent',
     name: 'Audit IA',
     description: 'Audit automatique de vos données et recommandations actionnables.',
+    deliverable: 'Rapport clair + plan 30 jours',
+    eta: 'Livré en 2h',
     price: '49.00'
   },
   {
     id: 'growth-agent',
     name: 'Growth IA',
     description: 'Plans marketing optimisés par IA avec priorisation des actions.',
+    deliverable: 'Roadmap growth priorisée',
+    eta: 'Livré en 4h',
     price: '79.00'
   },
   {
     id: 'ops-agent',
     name: 'Ops IA',
     description: 'Automatisation des opérations internes et alertes intelligentes.',
+    deliverable: 'Playbook d’automatisation',
+    eta: 'Livré en 6h',
     price: '99.00'
   }
 ];
@@ -87,6 +93,10 @@ const buildHtml = (clientId) => `<!doctype html>
             <div>
               <h3>${item.name}</h3>
               <p>${item.description}</p>
+              <ul class="card-list">
+                <li>${item.deliverable}</li>
+                <li>${item.eta}</li>
+              </ul>
             </div>
             <div class="card-footer">
               <span class="price">${item.price} €</span>
@@ -97,14 +107,42 @@ const buildHtml = (clientId) => `<!doctype html>
           .join('')}
       </section>
 
+      <section class="steps">
+        <div>
+          <p class="eyebrow">Comment ça marche</p>
+          <h2>Un flux pensé pour les agents IA</h2>
+          <p class="muted">Choisissez un module, payez en quelques secondes et recevez un jeton utilisable par votre agent IA.</p>
+        </div>
+        <div class="steps-grid">
+          <div class="step-card">
+            <span>1</span>
+            <h3>Choix du module</h3>
+            <p>Comparez les services IA et sélectionnez la mission adaptée.</p>
+          </div>
+          <div class="step-card">
+            <span>2</span>
+            <h3>Paiement PayPal</h3>
+            <p>Payez via l’interface sécurisée PayPal en environnement sandbox ou live.</p>
+          </div>
+          <div class="step-card">
+            <span>3</span>
+            <h3>Activation immédiate</h3>
+            <p>Recevez un jeton d’activation et lancez votre automatisation.</p>
+          </div>
+        </div>
+      </section>
+
       <section class="checkout">
         <div>
           <h2>Checkout sécurisé</h2>
           <p>Sélectionnez un module IA pour activer le paiement.</p>
           <div class="selected">
             <strong id="selected-name">Aucun module sélectionné</strong>
+            <span id="selected-desc">Sélectionnez un module pour voir le livrable.</span>
+            <span id="selected-eta">—</span>
             <span id="selected-price">—</span>
           </div>
+          <div id="payment-status" class="status">Statut du paiement en attente.</div>
         </div>
         <div id="paypal-button-container" class="paypal"></div>
       </section>
@@ -120,6 +158,14 @@ const buildHtml = (clientId) => `<!doctype html>
 
       const nameEl = document.getElementById('selected-name');
       const priceEl = document.getElementById('selected-price');
+      const descEl = document.getElementById('selected-desc');
+      const etaEl = document.getElementById('selected-eta');
+      const statusEl = document.getElementById('payment-status');
+
+      const setStatus = (message, status) => {
+        statusEl.textContent = message;
+        statusEl.dataset.status = status;
+      };
 
       document.querySelectorAll('.select').forEach((button) => {
         button.addEventListener('click', (event) => {
@@ -128,6 +174,9 @@ const buildHtml = (clientId) => `<!doctype html>
           selectedItem = items.find((item) => item.id === id);
           nameEl.textContent = selectedItem.name;
           priceEl.textContent = selectedItem.price + ' €';
+          descEl.textContent = selectedItem.deliverable;
+          etaEl.textContent = selectedItem.eta;
+          setStatus('Module prêt pour le paiement.', 'ready');
           document.querySelectorAll('.card').forEach((node) => node.classList.remove('active'));
           card.classList.add('active');
         });
@@ -138,9 +187,11 @@ const buildHtml = (clientId) => `<!doctype html>
       paypal.Buttons({
         createOrder: async () => {
           if (!selectedItem) {
+            setStatus('Sélectionnez un module IA avant de payer.', 'error');
             alert('Sélectionnez un module IA avant de payer.');
             throw new Error('No item selected');
           }
+          setStatus('Création de la commande PayPal…', 'pending');
           const response = await fetch('/api/orders', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -151,14 +202,33 @@ const buildHtml = (clientId) => `<!doctype html>
             })
           });
           const order = await response.json();
+          if (!response.ok) {
+            setStatus(order.error || 'Impossible de créer la commande.', 'error');
+            throw new Error('Order creation failed');
+          }
           return order.id;
         },
         onApprove: async (data) => {
+          setStatus('Capture du paiement en cours…', 'pending');
           const response = await fetch('/api/orders/' + data.orderID + '/capture', {
             method: 'POST'
           });
           const details = await response.json();
-          alert('Paiement confirmé pour ' + (details.payer?.name?.given_name || 'client') + ' !');
+          if (!response.ok) {
+            setStatus(details.error || 'La capture du paiement a échoué.', 'error');
+            throw new Error('Capture failed');
+          }
+          const payerName = details.payer?.name?.given_name || 'client';
+          const captureId = details?.purchase_units?.[0]?.payments?.captures?.[0]?.id;
+          setStatus(
+            'Paiement confirmé pour ' + payerName + (captureId ? ' · Réf. ' + captureId : '') + '.',
+            'success'
+          );
+          alert('Paiement confirmé pour ' + payerName + ' !');
+        },
+        onError: (err) => {
+          console.error(err);
+          setStatus('Une erreur est survenue. Réessayez ou contactez le support.', 'error');
         }
       }).render('#paypal-button-container');
     </script>

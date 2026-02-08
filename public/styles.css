@@ -88,6 +88,15 @@ body {
   transition: border 0.2s ease, transform 0.2s ease;
 }
 
+.card-list {
+  margin-top: 12px;
+  padding-left: 18px;
+  color: var(--muted);
+  display: grid;
+  gap: 6px;
+  font-size: 14px;
+}
+
 .card.active {
   border-color: var(--accent);
   box-shadow: 0 12px 24px rgba(95, 92, 255, 0.18);
@@ -116,6 +125,53 @@ body {
   font-weight: 600;
 }
 
+.steps {
+  display: grid;
+  grid-template-columns: minmax(240px, 320px) 1fr;
+  gap: 32px;
+  margin-bottom: 40px;
+  align-items: start;
+}
+
+.steps-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+}
+
+.step-card {
+  background: var(--card);
+  padding: 20px;
+  border-radius: 16px;
+  border: 1px solid rgba(29, 27, 79, 0.08);
+  display: grid;
+  gap: 10px;
+}
+
+.step-card span {
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(95, 92, 255, 0.16);
+  color: var(--accent);
+  border-radius: 50%;
+  font-weight: 700;
+}
+
+.eyebrow {
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.muted {
+  color: var(--muted);
+}
+
 .checkout {
   display: flex;
   justify-content: space-between;
@@ -132,6 +188,35 @@ body {
   flex-direction: column;
   gap: 6px;
   color: var(--muted);
+}
+
+.status {
+  margin-top: 16px;
+  padding: 12px 16px;
+  border-radius: 12px;
+  font-size: 14px;
+  background: rgba(95, 92, 255, 0.1);
+  color: var(--accent);
+}
+
+.status[data-status='pending'] {
+  background: rgba(95, 92, 255, 0.12);
+  color: var(--accent);
+}
+
+.status[data-status='ready'] {
+  background: rgba(29, 27, 79, 0.08);
+  color: var(--primary);
+}
+
+.status[data-status='success'] {
+  background: rgba(47, 158, 104, 0.12);
+  color: #2f9e68;
+}
+
+.status[data-status='error'] {
+  background: rgba(255, 107, 107, 0.12);
+  color: #ff6b6b;
 }
 
 .paypal {
@@ -152,6 +237,10 @@ footer {
   .hero {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .steps {
+    grid-template-columns: 1fr;
   }
 
   .checkout {
