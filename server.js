@@ -69,7 +69,7 @@ const catalog = [
   }
 ];
 
-const buildHtml = (clientId) => `<!doctype html>
+const buildHtml = (clientId, hasCredentials) => `<!doctype html>
 <html lang="fr">
   <head>
     <meta charset="utf-8" />
@@ -162,6 +162,13 @@ const buildHtml = (clientId) => `<!doctype html>
             </div>
           </div>
           <div id="payment-status" class="status">Statut du paiement en attente.</div>
+          <div class="demo">
+            <p class="eyebrow">Mode démo</p>
+            <p class="muted">
+              Utilisez la démo pour générer un jeton lorsque les identifiants PayPal ne sont pas configurés.
+            </p>
+            <button id="demo-activation" class="secondary">Générer un jeton démo</button>
+          </div>
         </div>
         <div id="paypal-button-container" class="paypal"></div>
         <div id="activation" class="activation">
@@ -211,6 +218,30 @@ const buildHtml = (clientId) => `<!doctype html>
           <p class="muted">Collez ce payload dans votre orchestrateur pour démarrer la mission.</p>
         </div>
       </section>
+
+      <section class="api">
+        <div>
+          <p class="eyebrow">API agents</p>
+          <h2>Connectez vos orchestrateurs</h2>
+          <p class="muted">
+            Récupérez le catalogue et transmettez le brief directement depuis vos agents IA.
+          </p>
+        </div>
+        <div class="api-cards">
+          <article class="api-card">
+            <h3>GET /api/catalog</h3>
+            <p class="muted">Liste des modules, tags, inputs et outputs.</p>
+            <pre><code>curl -s http://localhost:3000/api/catalog</code></pre>
+          </article>
+          <article class="api-card">
+            <h3>POST /api/demo-activation</h3>
+            <p class="muted">Génère un jeton de test pour vos workflows.</p>
+            <pre><code>curl -X POST http://localhost:3000/api/demo-activation \
+  -H "Content-Type: application/json" \
+  -d '{"moduleId":"audit-agent"}'</code></pre>
+          </article>
+        </div>
+      </section>
     </main>
 
     <footer>
@@ -237,6 +268,8 @@ const buildHtml = (clientId) => `<!doctype html>
       const briefSourcesEl = document.getElementById('brief-sources');
       const briefPayloadEl = document.getElementById('brief-payload');
       const copyBriefBtn = document.getElementById('copy-brief');
+      const demoButton = document.getElementById('demo-activation');
+      const hasCredentials = ${hasCredentials ? 'true' : 'false'};
 
       const setStatus = (message, status) => {
         statusEl.textContent = message;
@@ -262,6 +295,7 @@ const buildHtml = (clientId) => `<!doctype html>
         const moduleId = selectedItem ? selectedItem.id : null;
         const payload = {
           module: moduleId,
+          moduleName: selectedItem ? selectedItem.name : null,
           context: briefContextEl.value.trim(),
           goals: briefGoalsEl.value.trim(),
           sources: briefSourcesEl.value
@@ -326,9 +360,37 @@ const buildHtml = (clientId) => `<!doctype html>
         });
       });
 
+      demoButton.addEventListener('click', async () => {
+        if (!selectedItem) {
+          setStatus('Sélectionnez un module IA avant de générer un jeton.', 'error');
+          alert('Sélectionnez un module IA avant de générer un jeton.');
+          return;
+        }
+        setStatus('Génération du jeton démo…', 'pending');
+        const response = await fetch('/api/demo-activation', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ moduleId: selectedItem.id })
+        });
+        const result = await response.json();
+        if (!response.ok) {
+          setStatus(result.error || 'La génération du jeton a échoué.', 'error');
+          return;
+        }
+        showActivation(result.activation);
+        setStatus('Jeton démo généré. Utilisez-le pour vos tests.', 'success');
+      });
+
+      if (hasCredentials) {
+        demoButton.disabled = true;
+        demoButton.textContent = 'Démo indisponible (PayPal configuré)';
+      }
+
       updateBriefPayload();
     </script>
-    <script src="https://www.paypal.com/sdk/js?client-id=${clientId}&currency=EUR"></script>
+    ${
+      hasCredentials
+        ? `<script src="https://www.paypal.com/sdk/js?client-id=${clientId}&currency=EUR"></script>
     <script>
       paypal.Buttons({
         createOrder: async () => {
@@ -380,7 +442,12 @@ const buildHtml = (clientId) => `<!doctype html>
           setStatus('Une erreur est survenue. Réessayez ou contactez le support.', 'error');
         }
       }).render('#paypal-button-container');
-    </script>
+    </script>`
+        : `<script>
+          document.getElementById('paypal-button-container').innerHTML =
+            '<div class="muted">Configurez PAYPAL_CLIENT_ID pour activer le paiement.</div>';
+        </script>`
+    }
   </body>
 </html>`;
 
@@ -430,7 +497,7 @@ const server = http.createServer(async (req, res) => {
 
   if (method === 'GET' && url === '/') {
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-    res.end(buildHtml(PAYPAL_CLIENT_ID || 'YOUR_PAYPAL_CLIENT_ID'));
+    res.end(buildHtml(PAYPAL_CLIENT_ID || 'YOUR_PAYPAL_CLIENT_ID', Boolean(PAYPAL_CLIENT_ID)));
     return;
   }
 
@@ -438,6 +505,34 @@ const server = http.createServer(async (req, res) => {
     const cssPath = path.join(__dirname, 'public', 'styles.css');
     res.writeHead(200, { 'Content-Type': 'text/css' });
     res.end(fs.readFileSync(cssPath));
+    return;
+  }
+
+  if (method === 'GET' && url === '/api/catalog') {
+    sendJson(res, 200, { items: catalog });
+    return;
+  }
+
+  if (method === 'POST' && url === '/api/demo-activation') {
+    let body = '';
+    req.on('data', (chunk) => {
+      body += chunk;
+    });
+    req.on('end', () => {
+      try {
+        const { moduleId } = JSON.parse(body || '{}');
+        if (!moduleId) {
+          sendJson(res, 400, { error: 'Missing moduleId' });
+          return;
+        }
+        const activation = buildActivationPayload(`demo-${Date.now()}`, {
+          purchase_units: [{ reference_id: moduleId }]
+        });
+        sendJson(res, 200, { activation, demo: true });
+      } catch (error) {
+        sendJson(res, 500, { error: error.message });
+      }
+    });
     return;
   }
 
