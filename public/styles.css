@@ -97,6 +97,22 @@ body {
   font-size: 14px;
 }
 
+.tag-row {
+  margin-top: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.tag {
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(95, 92, 255, 0.12);
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 600;
+}
+
 .card.active {
   border-color: var(--accent);
   box-shadow: 0 12px 24px rgba(95, 92, 255, 0.18);
@@ -191,6 +207,24 @@ body {
   color: var(--muted);
 }
 
+.selected-inputs {
+  margin-top: 8px;
+  padding: 12px;
+  border-radius: 12px;
+  background: rgba(29, 27, 79, 0.04);
+  display: grid;
+  gap: 8px;
+}
+
+.selected-list {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--muted);
+  display: grid;
+  gap: 6px;
+  font-size: 14px;
+}
+
 .status {
   margin-top: 16px;
   padding: 12px 16px;
@@ -273,6 +307,65 @@ body {
   font-size: 14px;
 }
 
+.brief {
+  margin-top: 40px;
+  display: grid;
+  grid-template-columns: minmax(240px, 1fr) minmax(260px, 1fr);
+  gap: 24px;
+  background: var(--card);
+  padding: 28px;
+  border-radius: 20px;
+  align-items: start;
+}
+
+.brief-fields {
+  margin-top: 16px;
+  display: grid;
+  gap: 16px;
+}
+
+.brief-fields label {
+  display: grid;
+  gap: 8px;
+  font-size: 14px;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.brief-fields input,
+.brief-fields textarea {
+  border-radius: 12px;
+  border: 1px solid rgba(29, 27, 79, 0.12);
+  padding: 10px 12px;
+  font-size: 14px;
+  font-family: inherit;
+}
+
+.brief-output {
+  background: rgba(95, 92, 255, 0.06);
+  border-radius: 16px;
+  padding: 18px;
+  display: grid;
+  gap: 12px;
+}
+
+.brief-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.brief-output pre {
+  margin: 0;
+  background: #101027;
+  color: #f8f8ff;
+  padding: 14px;
+  border-radius: 12px;
+  font-size: 12px;
+  overflow-x: auto;
+}
+
 footer {
   margin-top: 40px;
   text-align: center;
@@ -296,5 +389,9 @@ footer {
   .checkout {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .brief {
+    grid-template-columns: 1fr;
   }
 }
