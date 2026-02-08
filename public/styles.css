@@ -216,6 +216,15 @@ body {
   gap: 8px;
 }
 
+.selected-outputs {
+  margin-top: 8px;
+  padding: 12px;
+  border-radius: 12px;
+  background: rgba(95, 92, 255, 0.08);
+  display: grid;
+  gap: 8px;
+}
+
 .selected-list {
   margin: 0;
   padding-left: 18px;
@@ -332,6 +341,46 @@ body {
   align-items: start;
 }
 
+.tracker {
+  margin-top: 40px;
+  display: grid;
+  grid-template-columns: minmax(240px, 320px) 1fr;
+  gap: 24px;
+  align-items: start;
+}
+
+.tracker-card {
+  background: var(--card);
+  border-radius: 20px;
+  padding: 20px;
+  border: 1px solid rgba(29, 27, 79, 0.08);
+}
+
+.tracker-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 12px;
+}
+
+.tracker-list li {
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  border-radius: 14px;
+  background: rgba(29, 27, 79, 0.04);
+}
+
+.tracker-list code {
+  background: rgba(29, 27, 79, 0.08);
+  padding: 6px 10px;
+  border-radius: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--primary);
+}
+
 .brief-fields {
   margin-top: 16px;
   display: grid;
@@ -439,6 +488,10 @@ footer {
   }
 
   .brief {
+    grid-template-columns: 1fr;
+  }
+
+  .tracker {
     grid-template-columns: 1fr;
   }
 }
