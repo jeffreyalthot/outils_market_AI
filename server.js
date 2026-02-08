@@ -216,6 +216,45 @@ const buildHtml = (clientId, hasCredentials) => `<!doctype html>
         </div>
       </section>
 
+      <section class="runbook">
+        <div>
+          <p class="eyebrow">Runbook agent</p>
+          <h2>Orchestration rapide</h2>
+          <p class="muted">
+            Utilisez ces commandes pour intégrer le module sélectionné dans votre pipeline ou orchestrateur IA.
+          </p>
+          <div class="runbook-meta">
+            <div>
+              <span class="muted">Module actif</span>
+              <strong id="runbook-module">—</strong>
+            </div>
+            <div>
+              <span class="muted">Base API</span>
+              <strong id="runbook-endpoint">—</strong>
+            </div>
+          </div>
+        </div>
+        <div class="runbook-cards">
+          <article class="runbook-card">
+            <h3>1. Vérifier le service</h3>
+            <pre><code id="runbook-health">curl -s http://localhost:3000/api/health</code></pre>
+          </article>
+          <article class="runbook-card">
+            <h3>2. Générer une activation</h3>
+            <pre><code id="runbook-activation">curl -X POST http://localhost:3000/api/demo-activation \
+  -H "Content-Type: application/json" \
+  -d '{"moduleId":"audit-agent"}'</code></pre>
+          </article>
+          <article class="runbook-card">
+            <h3>3. Envoyer le brief</h3>
+            <pre><code id="runbook-brief">curl -X POST http://localhost:3000/api/briefs \
+  -H "Content-Type: application/json" \
+  -d '{"module":"audit-agent","context":"","goals":"","sources":[]}'</code></pre>
+            <button id="download-brief" class="secondary">Télécharger le JSON</button>
+          </article>
+        </div>
+      </section>
+
       <section class="tracker">
         <div>
           <p class="eyebrow">Suivi live</p>
@@ -387,6 +426,12 @@ const buildHtml = (clientId, hasCredentials) => `<!doctype html>
       const metricBriefsEl = document.getElementById('metric-briefs');
       const metricLastActivationEl = document.getElementById('metric-last-activation');
       const metricLastBriefEl = document.getElementById('metric-last-brief');
+      const runbookModuleEl = document.getElementById('runbook-module');
+      const runbookEndpointEl = document.getElementById('runbook-endpoint');
+      const runbookHealthEl = document.getElementById('runbook-health');
+      const runbookActivationEl = document.getElementById('runbook-activation');
+      const runbookBriefEl = document.getElementById('runbook-brief');
+      const downloadBriefBtn = document.getElementById('download-brief');
       const hasCredentials = ${hasCredentials ? 'true' : 'false'};
       const tags = ${JSON.stringify(listTags())};
       let activeTag = 'Tous';
@@ -532,6 +577,8 @@ const buildHtml = (clientId, hasCredentials) => `<!doctype html>
         });
       };
 
+      const getBriefPayload = () => JSON.parse(briefPayloadEl.textContent || '{}');
+
       const updateBriefPayload = () => {
         const moduleId = selectedItem ? selectedItem.id : null;
         const payload = {
@@ -546,6 +593,38 @@ const buildHtml = (clientId, hasCredentials) => `<!doctype html>
             .filter(Boolean)
         };
         briefPayloadEl.textContent = JSON.stringify(payload, null, 2);
+        updateRunbook();
+      };
+
+      const updateRunbook = () => {
+        const baseUrl = window.location.origin;
+        const fallbackModule = items[0]?.id || 'audit-agent';
+        const moduleId = selectedItem ? selectedItem.id : fallbackModule;
+        const moduleName = selectedItem ? selectedItem.name : 'Aucun module sélectionné';
+        const briefPayload = getBriefPayload();
+        const resolvedBrief = {
+          module: moduleId,
+          moduleName: selectedItem ? selectedItem.name : briefPayload.moduleName || null,
+          outputs: selectedItem ? selectedItem.outputs : briefPayload.outputs || [],
+          context: briefPayload.context || '',
+          goals: briefPayload.goals || '',
+          sources: briefPayload.sources || []
+        };
+        runbookModuleEl.textContent = moduleName;
+        runbookEndpointEl.textContent = baseUrl;
+        runbookHealthEl.textContent = 'curl -s ' + baseUrl + '/api/health';
+        runbookActivationEl.textContent =
+          'curl -X POST ' +
+          baseUrl +
+          '/api/demo-activation \\\n  -H "Content-Type: application/json" \\\n  -d \'' +
+          JSON.stringify({ moduleId }) +
+          '\'';
+        runbookBriefEl.textContent =
+          'curl -X POST ' +
+          baseUrl +
+          '/api/briefs \\\n  -H "Content-Type: application/json" \\\n  -d \'' +
+          JSON.stringify(resolvedBrief) +
+          '\'';
       };
 
       copyTokenBtn.addEventListener('click', async () => {
@@ -573,6 +652,20 @@ const buildHtml = (clientId, hasCredentials) => `<!doctype html>
           console.warn('Clipboard not available', error);
           alert('Copiez manuellement le payload.');
         }
+      });
+
+      downloadBriefBtn.addEventListener('click', () => {
+        const payload = getBriefPayload();
+        const moduleId = payload.module || 'module';
+        const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = 'brief-' + moduleId + '.json';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        setTimeout(() => URL.revokeObjectURL(url), 500);
       });
 
       [briefContextEl, briefGoalsEl, briefSourcesEl].forEach((input) => {
@@ -826,6 +919,17 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (method === 'GET' && url.startsWith('/api/modules/')) {
+    const moduleId = decodeURIComponent(url.split('/')[3] || '');
+    const moduleDetails = findModule(moduleId);
+    if (!moduleDetails) {
+      sendJson(res, 404, { error: 'Module not found' });
+      return;
+    }
+    sendJson(res, 200, { item: moduleDetails });
+    return;
+  }
+
   if (method === 'GET' && url === '/api/activations') {
     sendJson(res, 200, { items: activations });
     return;
@@ -843,6 +947,16 @@ const server = http.createServer(async (req, res) => {
       briefCount: briefs.length,
       lastActivation: activations[0] || null,
       lastBrief: briefs[0] || null
+    });
+    return;
+  }
+
+  if (method === 'GET' && url === '/api/health') {
+    sendJson(res, 200, {
+      status: 'ok',
+      uptime: process.uptime(),
+      now: new Date().toISOString(),
+      paypalConfigured: Boolean(PAYPAL_CLIENT_ID && PAYPAL_CLIENT_SECRET)
     });
     return;
   }

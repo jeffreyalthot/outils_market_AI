@@ -22,3 +22,7 @@ Le serveur est disponible sur `http://localhost:3000`.
 
 ## Notes PayPal
 Par défaut, l'API PayPal est configurée sur l'environnement sandbox. Pour la production, définissez `PAYPAL_API_BASE=https://api-m.paypal.com`.
+
+## API utiles
+- `GET /api/health` : vérifie l'état du service et la configuration PayPal.
+- `GET /api/modules/:id` : récupère le détail d'un module IA.
