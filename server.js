@@ -40,7 +40,10 @@ const catalog = [
     description: 'Audit automatique de vos données et recommandations actionnables.',
     deliverable: 'Rapport clair + plan 30 jours',
     eta: 'Livré en 2h',
-    price: '49.00'
+    price: '49.00',
+    tags: ['Audit', 'Data', 'Quick win'],
+    inputs: ['KPI principaux', 'Sources de données', 'Contraintes business'],
+    outputs: ['Plan d’action 30 jours', 'Tableau d’opportunités']
   },
   {
     id: 'growth-agent',
@@ -48,7 +51,10 @@ const catalog = [
     description: 'Plans marketing optimisés par IA avec priorisation des actions.',
     deliverable: 'Roadmap growth priorisée',
     eta: 'Livré en 4h',
-    price: '79.00'
+    price: '79.00',
+    tags: ['Growth', 'Marketing', 'Expérimentation'],
+    inputs: ['Positionnement', 'Canaux actuels', 'Objectifs de conversion'],
+    outputs: ['Roadmap growth', 'Backlog d’expériences']
   },
   {
     id: 'ops-agent',
@@ -56,7 +62,10 @@ const catalog = [
     description: 'Automatisation des opérations internes et alertes intelligentes.',
     deliverable: 'Playbook d’automatisation',
     eta: 'Livré en 6h',
-    price: '99.00'
+    price: '99.00',
+    tags: ['Ops', 'Automatisation', 'Alerting'],
+    inputs: ['Process internes', 'SLA critiques', 'Outils existants'],
+    outputs: ['Playbook ops', 'Alertes intelligentes']
   }
 ];
 
@@ -94,6 +103,9 @@ const buildHtml = (clientId) => `<!doctype html>
             <div>
               <h3>${item.name}</h3>
               <p>${item.description}</p>
+              <div class="tag-row">
+                ${item.tags.map((tag) => `<span class="tag">${tag}</span>`).join('')}
+              </div>
               <ul class="card-list">
                 <li>${item.deliverable}</li>
                 <li>${item.eta}</li>
@@ -142,6 +154,12 @@ const buildHtml = (clientId) => `<!doctype html>
             <span id="selected-desc">Sélectionnez un module pour voir le livrable.</span>
             <span id="selected-eta">—</span>
             <span id="selected-price">—</span>
+            <div class="selected-inputs">
+              <p class="eyebrow">Inputs requis</p>
+              <ul id="selected-inputs" class="selected-list">
+                <li>—</li>
+              </ul>
+            </div>
           </div>
           <div id="payment-status" class="status">Statut du paiement en attente.</div>
         </div>
@@ -156,6 +174,41 @@ const buildHtml = (clientId) => `<!doctype html>
           </div>
           <p id="activation-expiry" class="muted"></p>
           <ul id="activation-steps" class="activation-steps"></ul>
+        </div>
+      </section>
+
+      <section class="brief">
+        <div>
+          <p class="eyebrow">Brief agent</p>
+          <h2>Préparez les données pour l’orchestrateur</h2>
+          <p class="muted">Générez un payload prêt à être consommé par un agent IA après paiement.</p>
+          <div class="brief-fields">
+            <label>
+              Contexte métier
+              <textarea id="brief-context" rows="3" placeholder="Ex: SaaS B2B, objectif churn 3%"></textarea>
+            </label>
+            <label>
+              Objectifs clés
+              <textarea id="brief-goals" rows="3" placeholder="Ex: améliorer l’activation, réduire le CAC"></textarea>
+            </label>
+            <label>
+              Sources disponibles
+              <input id="brief-sources" type="text" placeholder="Ex: HubSpot, Stripe, GA4" />
+            </label>
+          </div>
+        </div>
+        <div class="brief-output">
+          <div class="brief-header">
+            <h3>Payload JSON</h3>
+            <button id="copy-brief" class="secondary">Copier</button>
+          </div>
+          <pre><code id="brief-payload">{
+  "module": null,
+  "context": "",
+  "goals": "",
+  "sources": []
+}</code></pre>
+          <p class="muted">Collez ce payload dans votre orchestrateur pour démarrer la mission.</p>
         </div>
       </section>
     </main>
@@ -178,6 +231,12 @@ const buildHtml = (clientId) => `<!doctype html>
       const activationExpiryEl = document.getElementById('activation-expiry');
       const activationStepsEl = document.getElementById('activation-steps');
       const copyTokenBtn = document.getElementById('copy-token');
+      const selectedInputsEl = document.getElementById('selected-inputs');
+      const briefContextEl = document.getElementById('brief-context');
+      const briefGoalsEl = document.getElementById('brief-goals');
+      const briefSourcesEl = document.getElementById('brief-sources');
+      const briefPayloadEl = document.getElementById('brief-payload');
+      const copyBriefBtn = document.getElementById('copy-brief');
 
       const setStatus = (message, status) => {
         statusEl.textContent = message;
@@ -199,6 +258,20 @@ const buildHtml = (clientId) => `<!doctype html>
         activationEl.classList.add('visible');
       };
 
+      const updateBriefPayload = () => {
+        const moduleId = selectedItem ? selectedItem.id : null;
+        const payload = {
+          module: moduleId,
+          context: briefContextEl.value.trim(),
+          goals: briefGoalsEl.value.trim(),
+          sources: briefSourcesEl.value
+            .split(',')
+            .map((source) => source.trim())
+            .filter(Boolean)
+        };
+        briefPayloadEl.textContent = JSON.stringify(payload, null, 2);
+      };
+
       copyTokenBtn.addEventListener('click', async () => {
         const token = activationTokenEl.textContent;
         try {
@@ -213,6 +286,23 @@ const buildHtml = (clientId) => `<!doctype html>
         }
       });
 
+      copyBriefBtn.addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText(briefPayloadEl.textContent);
+          copyBriefBtn.textContent = 'Copié';
+          setTimeout(() => {
+            copyBriefBtn.textContent = 'Copier';
+          }, 1500);
+        } catch (error) {
+          console.warn('Clipboard not available', error);
+          alert('Copiez manuellement le payload.');
+        }
+      });
+
+      [briefContextEl, briefGoalsEl, briefSourcesEl].forEach((input) => {
+        input.addEventListener('input', updateBriefPayload);
+      });
+
       document.querySelectorAll('.select').forEach((button) => {
         button.addEventListener('click', (event) => {
           const card = event.target.closest('.card');
@@ -222,12 +312,21 @@ const buildHtml = (clientId) => `<!doctype html>
           priceEl.textContent = selectedItem.price + ' €';
           descEl.textContent = selectedItem.deliverable;
           etaEl.textContent = selectedItem.eta;
+          selectedInputsEl.innerHTML = '';
+          selectedItem.inputs.forEach((input) => {
+            const li = document.createElement('li');
+            li.textContent = input;
+            selectedInputsEl.appendChild(li);
+          });
           setStatus('Module prêt pour le paiement.', 'ready');
           document.querySelectorAll('.card').forEach((node) => node.classList.remove('active'));
           card.classList.add('active');
           activationEl.classList.remove('visible');
+          updateBriefPayload();
         });
       });
+
+      updateBriefPayload();
     </script>
     <script src="https://www.paypal.com/sdk/js?client-id=${clientId}&currency=EUR"></script>
     <script>
