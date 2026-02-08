@@ -180,6 +180,7 @@ body {
   padding: 28px;
   border-radius: 20px;
   align-items: center;
+  flex-wrap: wrap;
 }
 
 .selected {
@@ -221,6 +222,55 @@ body {
 
 .paypal {
   min-width: 240px;
+}
+
+.activation {
+  flex: 1 1 260px;
+  border: 1px dashed rgba(95, 92, 255, 0.4);
+  border-radius: 16px;
+  padding: 20px;
+  background: rgba(95, 92, 255, 0.06);
+  display: none;
+  gap: 12px;
+}
+
+.activation.visible {
+  display: grid;
+}
+
+.token-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.token-row code {
+  background: rgba(29, 27, 79, 0.08);
+  color: var(--primary);
+  padding: 8px 12px;
+  border-radius: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+}
+
+.secondary {
+  background: transparent;
+  color: var(--accent);
+  border: 1px solid rgba(95, 92, 255, 0.4);
+  border-radius: 999px;
+  padding: 8px 16px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.activation-steps {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--muted);
+  display: grid;
+  gap: 6px;
+  font-size: 14px;
 }
 
 footer {
