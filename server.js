@@ -75,6 +75,13 @@ const briefs = [];
 const MAX_BRIEFS = 6;
 
 const findModule = (moduleId) => catalog.find((item) => item.id === moduleId);
+const listTags = () => {
+  const set = new Set();
+  catalog.forEach((item) => {
+    item.tags.forEach((tag) => set.add(tag));
+  });
+  return Array.from(set).sort();
+};
 
 const buildHtml = (clientId, hasCredentials) => `<!doctype html>
 <html lang="fr">
@@ -106,7 +113,7 @@ const buildHtml = (clientId, hasCredentials) => `<!doctype html>
         ${catalog
           .map(
             (item) => `
-          <article class="card" data-id="${item.id}" data-price="${item.price}">
+          <article class="card" data-id="${item.id}" data-price="${item.price}" data-tags="${item.tags.join(',')}">
             <div>
               <h3>${item.name}</h3>
               <p>${item.description}</p>
@@ -125,6 +132,18 @@ const buildHtml = (clientId, hasCredentials) => `<!doctype html>
           </article>`
           )
           .join('')}
+      </section>
+
+      <section class="catalog-filter">
+        <div>
+          <p class="eyebrow">Filtrer le catalogue</p>
+          <h2>Trouvez le bon module IA</h2>
+          <p class="muted">Affinez par tag ou par mot-clé pour orienter vos agents.</p>
+        </div>
+        <div class="filter-panel">
+          <input id="catalog-search" type="search" placeholder="Rechercher un module, un deliverable..." />
+          <div id="catalog-tags" class="tag-filter"></div>
+        </div>
       </section>
 
       <section class="steps">
@@ -207,6 +226,31 @@ const buildHtml = (clientId, hasCredentials) => `<!doctype html>
           <ul id="activation-log" class="tracker-list">
             <li class="muted">Aucune activation disponible.</li>
           </ul>
+        </div>
+      </section>
+
+      <section class="pulse">
+        <div>
+          <p class="eyebrow">Pulse</p>
+          <h2>Suivi temps réel des agents</h2>
+          <p class="muted">Vue d’ensemble des activations et briefs en cours.</p>
+        </div>
+        <div class="pulse-grid">
+          <article class="pulse-card">
+            <p class="eyebrow">Modules</p>
+            <h3 id="metric-modules">—</h3>
+            <p class="muted">Disponibles dans le catalogue</p>
+          </article>
+          <article class="pulse-card">
+            <p class="eyebrow">Activations</p>
+            <h3 id="metric-activations">—</h3>
+            <p id="metric-last-activation" class="muted">Dernier jeton —</p>
+          </article>
+          <article class="pulse-card">
+            <p class="eyebrow">Briefs</p>
+            <h3 id="metric-briefs">—</h3>
+            <p id="metric-last-brief" class="muted">Dernier brief —</p>
+          </article>
         </div>
       </section>
 
@@ -336,7 +380,16 @@ const buildHtml = (clientId, hasCredentials) => `<!doctype html>
       const sendBriefBtn = document.getElementById('send-brief');
       const briefStatusEl = document.getElementById('brief-status');
       const briefLogEl = document.getElementById('brief-log');
+      const catalogSearchEl = document.getElementById('catalog-search');
+      const catalogTagsEl = document.getElementById('catalog-tags');
+      const metricModulesEl = document.getElementById('metric-modules');
+      const metricActivationsEl = document.getElementById('metric-activations');
+      const metricBriefsEl = document.getElementById('metric-briefs');
+      const metricLastActivationEl = document.getElementById('metric-last-activation');
+      const metricLastBriefEl = document.getElementById('metric-last-brief');
       const hasCredentials = ${hasCredentials ? 'true' : 'false'};
+      const tags = ${JSON.stringify(listTags())};
+      let activeTag = 'Tous';
 
       const setStatus = (message, status) => {
         statusEl.textContent = message;
@@ -422,6 +475,61 @@ const buildHtml = (clientId, hasCredentials) => `<!doctype html>
         } catch (error) {
           console.warn('Unable to load briefs', error);
         }
+      };
+
+      const renderMetrics = (metrics) => {
+        if (!metrics) {
+          return;
+        }
+        metricModulesEl.textContent = metrics.catalogCount ?? '—';
+        metricActivationsEl.textContent = metrics.activationCount ?? '—';
+        metricBriefsEl.textContent = metrics.briefCount ?? '—';
+        metricLastActivationEl.textContent = metrics.lastActivation
+          ? 'Dernier jeton ' + new Date(metrics.lastActivation.createdAt).toLocaleString('fr-FR')
+          : 'Dernier jeton —';
+        metricLastBriefEl.textContent = metrics.lastBrief
+          ? 'Dernier brief ' + new Date(metrics.lastBrief.createdAt).toLocaleString('fr-FR')
+          : 'Dernier brief —';
+      };
+
+      const refreshMetrics = async () => {
+        try {
+          const response = await fetch('/api/metrics');
+          const data = await response.json();
+          renderMetrics(data);
+        } catch (error) {
+          console.warn('Unable to load metrics', error);
+        }
+      };
+
+      const renderTagFilters = () => {
+        const buttons = ['Tous', ...tags];
+        catalogTagsEl.innerHTML = '';
+        buttons.forEach((tag) => {
+          const button = document.createElement('button');
+          button.type = 'button';
+          button.textContent = tag;
+          button.className = tag === activeTag ? 'tag-button active' : 'tag-button';
+          button.addEventListener('click', () => {
+            activeTag = tag;
+            renderTagFilters();
+            applyCatalogFilters();
+          });
+          catalogTagsEl.appendChild(button);
+        });
+      };
+
+      const applyCatalogFilters = () => {
+        const term = catalogSearchEl.value.toLowerCase();
+        const cards = document.querySelectorAll('.card');
+        cards.forEach((card) => {
+          const title = card.querySelector('h3')?.textContent?.toLowerCase() || '';
+          const desc = card.querySelector('p')?.textContent?.toLowerCase() || '';
+          const tags = (card.dataset.tags || '').toLowerCase().split(',');
+          const matchesTag = activeTag === 'Tous' || tags.includes(activeTag.toLowerCase());
+          const matchesTerm = !term || title.includes(term) || desc.includes(term);
+          card.style.display = matchesTag && matchesTerm ? 'flex' : 'none';
+        });
       };
 
       const updateBriefPayload = () => {
@@ -552,9 +660,15 @@ const buildHtml = (clientId, hasCredentials) => `<!doctype html>
         demoButton.textContent = 'Démo indisponible (PayPal configuré)';
       }
 
+      catalogSearchEl.addEventListener('input', applyCatalogFilters);
+
+      renderTagFilters();
+      applyCatalogFilters();
       updateBriefPayload();
       refreshActivationLog();
       refreshBriefLog();
+      refreshMetrics();
+      setInterval(refreshMetrics, 15000);
     </script>
     ${
       hasCredentials
@@ -719,6 +833,17 @@ const server = http.createServer(async (req, res) => {
 
   if (method === 'GET' && url === '/api/briefs') {
     sendJson(res, 200, { items: briefs });
+    return;
+  }
+
+  if (method === 'GET' && url === '/api/metrics') {
+    sendJson(res, 200, {
+      catalogCount: catalog.length,
+      activationCount: activations.length,
+      briefCount: briefs.length,
+      lastActivation: activations[0] || null,
+      lastBrief: briefs[0] || null
+    });
     return;
   }
 
