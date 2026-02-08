@@ -257,6 +257,25 @@ const buildHtml = (clientId, hasCredentials) => `<!doctype html>
         </div>
       </section>
 
+      <section class="validation">
+        <div>
+          <p class="eyebrow">Validation</p>
+          <h2>Contrôlez un jeton d’activation</h2>
+          <p class="muted">Vérifiez la validité d’un jeton avant de lancer vos agents IA.</p>
+        </div>
+        <div class="validation-panel">
+          <label>
+            Jeton d’activation
+            <input id="activation-validator" type="text" placeholder="AIM-XXXX-YYYY" />
+          </label>
+          <button id="validate-activation" class="select">Vérifier le jeton</button>
+          <div id="activation-validation-status" class="status">Aucun jeton vérifié.</div>
+          <ul id="activation-validation-details" class="validation-details">
+            <li class="muted">Les détails apparaîtront ici.</li>
+          </ul>
+        </div>
+      </section>
+
       <section class="tracker">
         <div>
           <p class="eyebrow">Suivi live</p>
@@ -398,6 +417,11 @@ const buildHtml = (clientId, hasCredentials) => `<!doctype html>
             <pre><code>curl -s http://localhost:3000/api/activations</code></pre>
           </article>
           <article class="api-card">
+            <h3>GET /api/activations/validate</h3>
+            <p class="muted">Valide un jeton et retourne son statut.</p>
+            <pre><code>curl -s "http://localhost:3000/api/activations/validate?token=AIM-..."</code></pre>
+          </article>
+          <article class="api-card">
             <h3>POST /api/briefs</h3>
             <p class="muted">Enregistre un brief transmis par un agent IA.</p>
             <pre><code>curl -X POST http://localhost:3000/api/briefs \
@@ -473,6 +497,10 @@ const buildHtml = (clientId, hasCredentials) => `<!doctype html>
       const runbookActivationEl = document.getElementById('runbook-activation');
       const runbookBriefEl = document.getElementById('runbook-brief');
       const downloadBriefBtn = document.getElementById('download-brief');
+      const activationValidatorInput = document.getElementById('activation-validator');
+      const activationValidateBtn = document.getElementById('validate-activation');
+      const activationValidationStatusEl = document.getElementById('activation-validation-status');
+      const activationValidationDetailsEl = document.getElementById('activation-validation-details');
       const hasCredentials = ${hasCredentials ? 'true' : 'false'};
       const tags = ${JSON.stringify(listTags())};
       let activeTag = 'Tous';
@@ -498,6 +526,38 @@ const buildHtml = (clientId, hasCredentials) => `<!doctype html>
           activationStepsEl.appendChild(li);
         });
         activationEl.classList.add('visible');
+        activationValidatorInput.value = activation.token;
+        renderActivationValidation(activation);
+      };
+
+      const setValidationStatus = (message, status) => {
+        activationValidationStatusEl.textContent = message;
+        activationValidationStatusEl.dataset.status = status;
+      };
+
+      const renderActivationValidation = (activation) => {
+        activationValidationDetailsEl.innerHTML = '';
+        if (!activation) {
+          const empty = document.createElement('li');
+          empty.className = 'muted';
+          empty.textContent = 'Les détails apparaîtront ici.';
+          activationValidationDetailsEl.appendChild(empty);
+          return;
+        }
+        const items = [
+          { label: 'Module', value: activation.moduleName || activation.moduleId || '—' },
+          { label: 'Mode', value: activation.mode || '—' },
+          {
+            label: 'Expiration',
+            value: activation.expiresAt ? new Date(activation.expiresAt).toLocaleString('fr-FR') : '—'
+          },
+          { label: 'Référence', value: activation.orderId || '—' }
+        ];
+        items.forEach((item) => {
+          const li = document.createElement('li');
+          li.innerHTML = \`<strong>\${item.label}</strong><span>\${item.value}</span>\`;
+          activationValidationDetailsEl.appendChild(li);
+        });
       };
 
       const renderActivationLog = (entries) => {
@@ -517,6 +577,7 @@ const buildHtml = (clientId, hasCredentials) => `<!doctype html>
               <span class="muted">· \${entry.mode}</span>
             </div>
             <div class="muted">\${new Date(entry.createdAt).toLocaleString('fr-FR')}</div>
+            <div class="muted">Expire: \${entry.expiresAt ? new Date(entry.expiresAt).toLocaleString('fr-FR') : '—'}</div>
             <code>\${entry.token}</code>
           \`;
           activationLogEl.appendChild(li);
@@ -749,6 +810,38 @@ const buildHtml = (clientId, hasCredentials) => `<!doctype html>
         link.click();
         document.body.removeChild(link);
         setTimeout(() => URL.revokeObjectURL(url), 500);
+      });
+
+      const validateActivation = async () => {
+        const token = activationValidatorInput.value.trim();
+        if (!token) {
+          setValidationStatus('Saisissez un jeton à vérifier.', 'error');
+          renderActivationValidation(null);
+          return;
+        }
+        setValidationStatus('Validation en cours…', 'pending');
+        try {
+          const response = await fetch('/api/activations/validate?token=' + encodeURIComponent(token));
+          const result = await response.json();
+          if (!response.ok) {
+            setValidationStatus(result.error || 'Jeton invalide.', 'error');
+            renderActivationValidation(null);
+            return;
+          }
+          setValidationStatus('Jeton valide et prêt à l’usage.', 'success');
+          renderActivationValidation(result.activation);
+        } catch (error) {
+          console.warn('Activation validation failed', error);
+          setValidationStatus('Impossible de valider le jeton.', 'error');
+          renderActivationValidation(null);
+        }
+      };
+
+      activationValidateBtn.addEventListener('click', validateActivation);
+      activationValidatorInput.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') {
+          validateActivation();
+        }
       });
 
       [briefContextEl, briefGoalsEl, briefSourcesEl].forEach((input) => {
@@ -1001,6 +1094,9 @@ const recordActivation = (activation, mode) => {
     token: activation.token,
     moduleId: activation.moduleId,
     moduleName: activation.moduleName,
+    orderId: activation.orderId,
+    expiresAt: activation.expiresAt,
+    nextSteps: activation.nextSteps,
     mode,
     createdAt: new Date().toISOString()
   });
@@ -1066,6 +1162,26 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (method === 'GET' && url.startsWith('/api/activations/validate')) {
+    const requestUrl = new URL(url, `http://${req.headers.host}`);
+    const token = requestUrl.searchParams.get('token');
+    if (!token) {
+      sendJson(res, 400, { error: 'Missing token' });
+      return;
+    }
+    const activation = activations.find((entry) => entry.token === token);
+    if (!activation) {
+      sendJson(res, 404, { error: 'Activation not found' });
+      return;
+    }
+    if (activation.expiresAt && new Date(activation.expiresAt) < new Date()) {
+      sendJson(res, 410, { error: 'Activation expired' });
+      return;
+    }
+    sendJson(res, 200, { activation });
+    return;
+  }
+
   if (method === 'GET' && url === '/api/briefs') {
     sendJson(res, 200, { items: briefs });
     return;
@@ -1114,6 +1230,7 @@ const server = http.createServer(async (req, res) => {
         const activation = buildActivationPayload(`demo-${Date.now()}`, {
           purchase_units: [{ reference_id: moduleId }]
         });
+        activation.mode = 'demo';
         recordActivation(activation, 'demo');
         sendJson(res, 200, { activation, demo: true });
       } catch (error) {
@@ -1246,6 +1363,7 @@ const server = http.createServer(async (req, res) => {
       let payload = captureData;
       if (response.ok) {
         const activation = buildActivationPayload(orderId, captureData);
+        activation.mode = 'paypal';
         recordActivation(activation, 'paypal');
         payload = {
           ...captureData,

@@ -388,6 +388,62 @@ body {
   align-items: start;
 }
 
+.validation {
+  margin-top: 40px;
+  display: grid;
+  grid-template-columns: minmax(240px, 320px) 1fr;
+  gap: 24px;
+  align-items: start;
+}
+
+.validation-panel {
+  background: var(--card);
+  border-radius: 20px;
+  padding: 24px;
+  border: 1px solid rgba(29, 27, 79, 0.08);
+  display: grid;
+  gap: 16px;
+}
+
+.validation-panel label {
+  display: grid;
+  gap: 8px;
+  font-size: 14px;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.validation-panel input {
+  border-radius: 12px;
+  border: 1px solid rgba(29, 27, 79, 0.12);
+  padding: 10px 12px;
+  font-size: 14px;
+  font-family: inherit;
+}
+
+.validation-details {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.validation-details li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(29, 27, 79, 0.04);
+  font-size: 14px;
+  color: var(--text);
+}
+
+.validation-details li span {
+  color: var(--muted);
+}
+
 .runbook {
   margin-top: 40px;
   display: grid;
@@ -669,6 +725,10 @@ footer {
   }
 
   .runbook {
+    grid-template-columns: 1fr;
+  }
+
+  .validation {
     grid-template-columns: 1fr;
   }
 
