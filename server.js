@@ -69,6 +69,11 @@ const catalog = [
   }
 ];
 
+const activations = [];
+const MAX_ACTIVATIONS = 8;
+
+const findModule = (moduleId) => catalog.find((item) => item.id === moduleId);
+
 const buildHtml = (clientId, hasCredentials) => `<!doctype html>
 <html lang="fr">
   <head>
@@ -160,6 +165,12 @@ const buildHtml = (clientId, hasCredentials) => `<!doctype html>
                 <li>—</li>
               </ul>
             </div>
+            <div class="selected-outputs">
+              <p class="eyebrow">Outputs attendus</p>
+              <ul id="selected-outputs" class="selected-list">
+                <li>—</li>
+              </ul>
+            </div>
           </div>
           <div id="payment-status" class="status">Statut du paiement en attente.</div>
           <div class="demo">
@@ -181,6 +192,19 @@ const buildHtml = (clientId, hasCredentials) => `<!doctype html>
           </div>
           <p id="activation-expiry" class="muted"></p>
           <ul id="activation-steps" class="activation-steps"></ul>
+        </div>
+      </section>
+
+      <section class="tracker">
+        <div>
+          <p class="eyebrow">Suivi live</p>
+          <h2>Journal des activations</h2>
+          <p class="muted">Visualisez les derniers jetons générés pour vos agents et orchestrateurs.</p>
+        </div>
+        <div class="tracker-card">
+          <ul id="activation-log" class="tracker-list">
+            <li class="muted">Aucune activation disponible.</li>
+          </ul>
         </div>
       </section>
 
@@ -211,6 +235,8 @@ const buildHtml = (clientId, hasCredentials) => `<!doctype html>
           </div>
           <pre><code id="brief-payload">{
   "module": null,
+  "moduleName": null,
+  "outputs": [],
   "context": "",
   "goals": "",
   "sources": []
@@ -240,6 +266,11 @@ const buildHtml = (clientId, hasCredentials) => `<!doctype html>
   -H "Content-Type: application/json" \
   -d '{"moduleId":"audit-agent"}'</code></pre>
           </article>
+          <article class="api-card">
+            <h3>GET /api/activations</h3>
+            <p class="muted">Liste les derniers jetons générés.</p>
+            <pre><code>curl -s http://localhost:3000/api/activations</code></pre>
+          </article>
         </div>
       </section>
     </main>
@@ -263,12 +294,14 @@ const buildHtml = (clientId, hasCredentials) => `<!doctype html>
       const activationStepsEl = document.getElementById('activation-steps');
       const copyTokenBtn = document.getElementById('copy-token');
       const selectedInputsEl = document.getElementById('selected-inputs');
+      const selectedOutputsEl = document.getElementById('selected-outputs');
       const briefContextEl = document.getElementById('brief-context');
       const briefGoalsEl = document.getElementById('brief-goals');
       const briefSourcesEl = document.getElementById('brief-sources');
       const briefPayloadEl = document.getElementById('brief-payload');
       const copyBriefBtn = document.getElementById('copy-brief');
       const demoButton = document.getElementById('demo-activation');
+      const activationLogEl = document.getElementById('activation-log');
       const hasCredentials = ${hasCredentials ? 'true' : 'false'};
 
       const setStatus = (message, status) => {
@@ -291,11 +324,45 @@ const buildHtml = (clientId, hasCredentials) => `<!doctype html>
         activationEl.classList.add('visible');
       };
 
+      const renderActivationLog = (entries) => {
+        activationLogEl.innerHTML = '';
+        if (!entries || entries.length === 0) {
+          const empty = document.createElement('li');
+          empty.className = 'muted';
+          empty.textContent = 'Aucune activation disponible.';
+          activationLogEl.appendChild(empty);
+          return;
+        }
+        entries.forEach((entry) => {
+          const li = document.createElement('li');
+          li.innerHTML = \`
+            <div>
+              <strong>\${entry.moduleName}</strong>
+              <span class="muted">· \${entry.mode}</span>
+            </div>
+            <div class="muted">\${new Date(entry.createdAt).toLocaleString('fr-FR')}</div>
+            <code>\${entry.token}</code>
+          \`;
+          activationLogEl.appendChild(li);
+        });
+      };
+
+      const refreshActivationLog = async () => {
+        try {
+          const response = await fetch('/api/activations');
+          const data = await response.json();
+          renderActivationLog(data.items || []);
+        } catch (error) {
+          console.warn('Unable to load activations', error);
+        }
+      };
+
       const updateBriefPayload = () => {
         const moduleId = selectedItem ? selectedItem.id : null;
         const payload = {
           module: moduleId,
           moduleName: selectedItem ? selectedItem.name : null,
+          outputs: selectedItem ? selectedItem.outputs : [],
           context: briefContextEl.value.trim(),
           goals: briefGoalsEl.value.trim(),
           sources: briefSourcesEl.value
@@ -352,6 +419,12 @@ const buildHtml = (clientId, hasCredentials) => `<!doctype html>
             li.textContent = input;
             selectedInputsEl.appendChild(li);
           });
+          selectedOutputsEl.innerHTML = '';
+          selectedItem.outputs.forEach((output) => {
+            const li = document.createElement('li');
+            li.textContent = output;
+            selectedOutputsEl.appendChild(li);
+          });
           setStatus('Module prêt pour le paiement.', 'ready');
           document.querySelectorAll('.card').forEach((node) => node.classList.remove('active'));
           card.classList.add('active');
@@ -379,6 +452,7 @@ const buildHtml = (clientId, hasCredentials) => `<!doctype html>
         }
         showActivation(result.activation);
         setStatus('Jeton démo généré. Utilisez-le pour vos tests.', 'success');
+        refreshActivationLog();
       });
 
       if (hasCredentials) {
@@ -387,6 +461,7 @@ const buildHtml = (clientId, hasCredentials) => `<!doctype html>
       }
 
       updateBriefPayload();
+      refreshActivationLog();
     </script>
     ${
       hasCredentials
@@ -435,6 +510,7 @@ const buildHtml = (clientId, hasCredentials) => `<!doctype html>
             'Paiement confirmé pour ' + payerName + (captureId ? ' · Réf. ' + captureId : '') + '.',
             'success'
           );
+          refreshActivationLog();
           alert('Paiement confirmé pour ' + payerName + ' !');
         },
         onError: (err) => {
@@ -479,10 +555,14 @@ const sendJson = (res, status, payload) => {
 const buildActivationPayload = (orderId, captureData) => {
   const rawToken = crypto.randomBytes(10).toString('hex').toUpperCase();
   const moduleId = captureData?.purchase_units?.[0]?.reference_id || 'module';
+  const moduleDetails = findModule(moduleId);
+  const moduleName = moduleDetails ? moduleDetails.name : 'Module IA';
   const expiresAt = new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString();
   return {
     token: `AIM-${moduleId.toUpperCase()}-${rawToken}`,
     orderId,
+    moduleId,
+    moduleName,
     expiresAt,
     nextSteps: [
       'Copiez le jeton dans votre orchestrateur IA.',
@@ -490,6 +570,22 @@ const buildActivationPayload = (orderId, captureData) => {
       'Contactez support@aimarket.ai en cas de blocage.'
     ]
   };
+};
+
+const recordActivation = (activation, mode) => {
+  if (!activation) {
+    return;
+  }
+  activations.unshift({
+    token: activation.token,
+    moduleId: activation.moduleId,
+    moduleName: activation.moduleName,
+    mode,
+    createdAt: new Date().toISOString()
+  });
+  if (activations.length > MAX_ACTIVATIONS) {
+    activations.length = MAX_ACTIVATIONS;
+  }
 };
 
 const server = http.createServer(async (req, res) => {
@@ -513,6 +609,11 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (method === 'GET' && url === '/api/activations') {
+    sendJson(res, 200, { items: activations });
+    return;
+  }
+
   if (method === 'POST' && url === '/api/demo-activation') {
     let body = '';
     req.on('data', (chunk) => {
@@ -528,6 +629,7 @@ const server = http.createServer(async (req, res) => {
         const activation = buildActivationPayload(`demo-${Date.now()}`, {
           purchase_units: [{ reference_id: moduleId }]
         });
+        recordActivation(activation, 'demo');
         sendJson(res, 200, { activation, demo: true });
       } catch (error) {
         sendJson(res, 500, { error: error.message });
@@ -594,9 +696,11 @@ const server = http.createServer(async (req, res) => {
       const captureData = await response.json();
       let payload = captureData;
       if (response.ok) {
+        const activation = buildActivationPayload(orderId, captureData);
+        recordActivation(activation, 'paypal');
         payload = {
           ...captureData,
-          activation: buildActivationPayload(orderId, captureData)
+          activation
         };
       }
       sendJson(res, response.status, payload);
