@@ -73,6 +73,8 @@ const activations = [];
 const MAX_ACTIVATIONS = 8;
 const briefs = [];
 const MAX_BRIEFS = 6;
+const missions = [];
+const MAX_MISSIONS = 6;
 
 const findModule = (moduleId) => catalog.find((item) => item.id === moduleId);
 const listTags = () => {
@@ -290,6 +292,11 @@ const buildHtml = (clientId, hasCredentials) => `<!doctype html>
             <h3 id="metric-briefs">—</h3>
             <p id="metric-last-brief" class="muted">Dernier brief —</p>
           </article>
+          <article class="pulse-card">
+            <p class="eyebrow">Missions</p>
+            <h3 id="metric-missions">—</h3>
+            <p id="metric-last-mission" class="muted">Dernière mission —</p>
+          </article>
         </div>
       </section>
 
@@ -347,6 +354,23 @@ const buildHtml = (clientId, hasCredentials) => `<!doctype html>
         </div>
       </section>
 
+      <section class="mission">
+        <div>
+          <p class="eyebrow">Mission control</p>
+          <h2>Orchestrer une mission IA</h2>
+          <p class="muted">Associez un jeton d’activation et un brief pour déclencher une mission.</p>
+          <div class="mission-actions">
+            <button id="create-mission" class="select">Créer une mission</button>
+            <span id="mission-status" class="muted">Aucune mission déclenchée.</span>
+          </div>
+        </div>
+        <div class="tracker-card">
+          <ul id="mission-log" class="tracker-list">
+            <li class="muted">Aucune mission enregistrée.</li>
+          </ul>
+        </div>
+      </section>
+
       <section class="api">
         <div>
           <p class="eyebrow">API agents</p>
@@ -385,6 +409,18 @@ const buildHtml = (clientId, hasCredentials) => `<!doctype html>
             <p class="muted">Récupère les derniers briefs enregistrés.</p>
             <pre><code>curl -s http://localhost:3000/api/briefs</code></pre>
           </article>
+          <article class="api-card">
+            <h3>POST /api/missions</h3>
+            <p class="muted">Crée une mission à partir d’un jeton et d’un brief.</p>
+            <pre><code>curl -X POST http://localhost:3000/api/missions \
+  -H "Content-Type: application/json" \
+  -d '{"moduleId":"audit-agent","activationToken":"AIM-...","brief":{"module":"audit-agent"}}'</code></pre>
+          </article>
+          <article class="api-card">
+            <h3>GET /api/missions</h3>
+            <p class="muted">Liste les missions orchestrées.</p>
+            <pre><code>curl -s http://localhost:3000/api/missions</code></pre>
+          </article>
         </div>
       </section>
     </main>
@@ -419,13 +455,18 @@ const buildHtml = (clientId, hasCredentials) => `<!doctype html>
       const sendBriefBtn = document.getElementById('send-brief');
       const briefStatusEl = document.getElementById('brief-status');
       const briefLogEl = document.getElementById('brief-log');
+      const missionStatusEl = document.getElementById('mission-status');
+      const missionLogEl = document.getElementById('mission-log');
+      const createMissionBtn = document.getElementById('create-mission');
       const catalogSearchEl = document.getElementById('catalog-search');
       const catalogTagsEl = document.getElementById('catalog-tags');
       const metricModulesEl = document.getElementById('metric-modules');
       const metricActivationsEl = document.getElementById('metric-activations');
       const metricBriefsEl = document.getElementById('metric-briefs');
+      const metricMissionsEl = document.getElementById('metric-missions');
       const metricLastActivationEl = document.getElementById('metric-last-activation');
       const metricLastBriefEl = document.getElementById('metric-last-brief');
+      const metricLastMissionEl = document.getElementById('metric-last-mission');
       const runbookModuleEl = document.getElementById('runbook-module');
       const runbookEndpointEl = document.getElementById('runbook-endpoint');
       const runbookHealthEl = document.getElementById('runbook-health');
@@ -435,6 +476,8 @@ const buildHtml = (clientId, hasCredentials) => `<!doctype html>
       const hasCredentials = ${hasCredentials ? 'true' : 'false'};
       const tags = ${JSON.stringify(listTags())};
       let activeTag = 'Tous';
+      let lastActivationToken = null;
+      let lastBriefId = null;
 
       const setStatus = (message, status) => {
         statusEl.textContent = message;
@@ -446,6 +489,7 @@ const buildHtml = (clientId, hasCredentials) => `<!doctype html>
           return;
         }
         activationTokenEl.textContent = activation.token;
+        lastActivationToken = activation.token;
         activationExpiryEl.textContent = 'Valide jusqu’au ' + new Date(activation.expiresAt).toLocaleString('fr-FR');
         activationStepsEl.innerHTML = '';
         activation.nextSteps.forEach((step) => {
@@ -484,6 +528,7 @@ const buildHtml = (clientId, hasCredentials) => `<!doctype html>
           const response = await fetch('/api/activations');
           const data = await response.json();
           renderActivationLog(data.items || []);
+          lastActivationToken = data.items?.[0]?.token || lastActivationToken;
         } catch (error) {
           console.warn('Unable to load activations', error);
         }
@@ -517,8 +562,42 @@ const buildHtml = (clientId, hasCredentials) => `<!doctype html>
           const response = await fetch('/api/briefs');
           const data = await response.json();
           renderBriefLog(data.items || []);
+          lastBriefId = data.items?.[0]?.id || lastBriefId;
         } catch (error) {
           console.warn('Unable to load briefs', error);
+        }
+      };
+
+      const renderMissionLog = (entries) => {
+        missionLogEl.innerHTML = '';
+        if (!entries || entries.length === 0) {
+          const empty = document.createElement('li');
+          empty.className = 'muted';
+          empty.textContent = 'Aucune mission enregistrée.';
+          missionLogEl.appendChild(empty);
+          return;
+        }
+        entries.forEach((entry) => {
+          const li = document.createElement('li');
+          li.innerHTML = \`
+            <div>
+              <strong>\${entry.moduleName}</strong>
+              <span class="muted">· \${entry.status}</span>
+            </div>
+            <div class="muted">\${new Date(entry.createdAt).toLocaleString('fr-FR')}</div>
+            <code>\${entry.id}</code>
+          \`;
+          missionLogEl.appendChild(li);
+        });
+      };
+
+      const refreshMissionLog = async () => {
+        try {
+          const response = await fetch('/api/missions');
+          const data = await response.json();
+          renderMissionLog(data.items || []);
+        } catch (error) {
+          console.warn('Unable to load missions', error);
         }
       };
 
@@ -529,12 +608,16 @@ const buildHtml = (clientId, hasCredentials) => `<!doctype html>
         metricModulesEl.textContent = metrics.catalogCount ?? '—';
         metricActivationsEl.textContent = metrics.activationCount ?? '—';
         metricBriefsEl.textContent = metrics.briefCount ?? '—';
+        metricMissionsEl.textContent = metrics.missionCount ?? '—';
         metricLastActivationEl.textContent = metrics.lastActivation
           ? 'Dernier jeton ' + new Date(metrics.lastActivation.createdAt).toLocaleString('fr-FR')
           : 'Dernier jeton —';
         metricLastBriefEl.textContent = metrics.lastBrief
           ? 'Dernier brief ' + new Date(metrics.lastBrief.createdAt).toLocaleString('fr-FR')
           : 'Dernier brief —';
+        metricLastMissionEl.textContent = metrics.lastMission
+          ? 'Dernière mission ' + new Date(metrics.lastMission.createdAt).toLocaleString('fr-FR')
+          : 'Dernière mission —';
       };
 
       const refreshMetrics = async () => {
@@ -694,7 +777,44 @@ const buildHtml = (clientId, hasCredentials) => `<!doctype html>
         }
         briefStatusEl.textContent = 'Brief envoyé. Référence: ' + result.brief.id + '.';
         briefStatusEl.dataset.status = 'success';
+        lastBriefId = result.brief.id;
         refreshBriefLog();
+      });
+
+      createMissionBtn.addEventListener('click', async () => {
+        const payload = JSON.parse(briefPayloadEl.textContent || '{}');
+        if (!payload.module) {
+          missionStatusEl.textContent = 'Sélectionnez un module et préparez le brief.';
+          missionStatusEl.dataset.status = 'error';
+          return;
+        }
+        if (!lastActivationToken) {
+          missionStatusEl.textContent = 'Générez un jeton d’activation avant de créer la mission.';
+          missionStatusEl.dataset.status = 'error';
+          return;
+        }
+        missionStatusEl.textContent = 'Création de la mission en cours…';
+        missionStatusEl.dataset.status = 'pending';
+        const response = await fetch('/api/missions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            moduleId: payload.module,
+            activationToken: lastActivationToken,
+            brief: payload,
+            briefId: lastBriefId
+          })
+        });
+        const result = await response.json();
+        if (!response.ok) {
+          missionStatusEl.textContent = result.error || 'Impossible de créer la mission.';
+          missionStatusEl.dataset.status = 'error';
+          return;
+        }
+        missionStatusEl.textContent = 'Mission créée: ' + result.mission.id + '.';
+        missionStatusEl.dataset.status = 'success';
+        refreshMissionLog();
+        refreshMetrics();
       });
 
       document.querySelectorAll('.select').forEach((button) => {
@@ -760,6 +880,7 @@ const buildHtml = (clientId, hasCredentials) => `<!doctype html>
       updateBriefPayload();
       refreshActivationLog();
       refreshBriefLog();
+      refreshMissionLog();
       refreshMetrics();
       setInterval(refreshMetrics, 15000);
     </script>
@@ -898,6 +1019,16 @@ const recordBrief = (brief) => {
   }
 };
 
+const recordMission = (mission) => {
+  if (!mission) {
+    return;
+  }
+  missions.unshift(mission);
+  if (missions.length > MAX_MISSIONS) {
+    missions.length = MAX_MISSIONS;
+  }
+};
+
 const server = http.createServer(async (req, res) => {
   const { method, url } = req;
 
@@ -940,13 +1071,20 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (method === 'GET' && url === '/api/missions') {
+    sendJson(res, 200, { items: missions });
+    return;
+  }
+
   if (method === 'GET' && url === '/api/metrics') {
     sendJson(res, 200, {
       catalogCount: catalog.length,
       activationCount: activations.length,
       briefCount: briefs.length,
+      missionCount: missions.length,
       lastActivation: activations[0] || null,
-      lastBrief: briefs[0] || null
+      lastBrief: briefs[0] || null,
+      lastMission: missions[0] || null
     });
     return;
   }
@@ -1010,6 +1148,38 @@ const server = http.createServer(async (req, res) => {
         };
         recordBrief(brief);
         sendJson(res, 200, { brief });
+      } catch (error) {
+        sendJson(res, 500, { error: error.message });
+      }
+    });
+    return;
+  }
+
+  if (method === 'POST' && url === '/api/missions') {
+    let body = '';
+    req.on('data', (chunk) => {
+      body += chunk;
+    });
+    req.on('end', () => {
+      try {
+        const { moduleId, activationToken, brief, briefId } = JSON.parse(body || '{}');
+        if (!moduleId || !activationToken) {
+          sendJson(res, 400, { error: 'Missing moduleId or activationToken' });
+          return;
+        }
+        const moduleDetails = findModule(moduleId);
+        const mission = {
+          id: `MSN-${Date.now().toString(36).toUpperCase()}`,
+          moduleId,
+          moduleName: moduleDetails?.name || moduleId,
+          activationToken,
+          briefId: briefId || null,
+          brief: brief && typeof brief === 'object' ? brief : null,
+          status: 'queued',
+          createdAt: new Date().toISOString()
+        };
+        recordMission(mission);
+        sendJson(res, 200, { mission });
       } catch (error) {
         sendJson(res, 500, { error: error.message });
       }
