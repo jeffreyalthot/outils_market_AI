@@ -570,6 +570,34 @@ body {
   align-items: start;
 }
 
+.mission {
+  margin-top: 40px;
+  display: grid;
+  grid-template-columns: minmax(240px, 320px) 1fr;
+  gap: 24px;
+  align-items: start;
+}
+
+.mission-actions {
+  margin-top: 16px;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+#mission-status[data-status='pending'] {
+  color: var(--accent);
+}
+
+#mission-status[data-status='success'] {
+  color: #2f9e68;
+}
+
+#mission-status[data-status='error'] {
+  color: #ff6b6b;
+}
+
 .api {
   margin-top: 40px;
   display: grid;
@@ -649,6 +677,10 @@ footer {
   }
 
   .pulse {
+    grid-template-columns: 1fr;
+  }
+
+  .mission {
     grid-template-columns: 1fr;
   }
 }
