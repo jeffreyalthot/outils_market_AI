@@ -1,6 +1,7 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 
 const port = process.env.PORT || 3000;
 
@@ -145,6 +146,17 @@ const buildHtml = (clientId) => `<!doctype html>
           <div id="payment-status" class="status">Statut du paiement en attente.</div>
         </div>
         <div id="paypal-button-container" class="paypal"></div>
+        <div id="activation" class="activation">
+          <p class="eyebrow">Jeton d'activation</p>
+          <h3>Votre module est prêt</h3>
+          <p class="muted">Copiez ce jeton dans votre orchestrateur pour lancer l’agent.</p>
+          <div class="token-row">
+            <code id="activation-token">AIM-XXXX</code>
+            <button id="copy-token" class="secondary">Copier</button>
+          </div>
+          <p id="activation-expiry" class="muted"></p>
+          <ul id="activation-steps" class="activation-steps"></ul>
+        </div>
       </section>
     </main>
 
@@ -161,11 +173,45 @@ const buildHtml = (clientId) => `<!doctype html>
       const descEl = document.getElementById('selected-desc');
       const etaEl = document.getElementById('selected-eta');
       const statusEl = document.getElementById('payment-status');
+      const activationEl = document.getElementById('activation');
+      const activationTokenEl = document.getElementById('activation-token');
+      const activationExpiryEl = document.getElementById('activation-expiry');
+      const activationStepsEl = document.getElementById('activation-steps');
+      const copyTokenBtn = document.getElementById('copy-token');
 
       const setStatus = (message, status) => {
         statusEl.textContent = message;
         statusEl.dataset.status = status;
       };
+
+      const showActivation = (activation) => {
+        if (!activation) {
+          return;
+        }
+        activationTokenEl.textContent = activation.token;
+        activationExpiryEl.textContent = 'Valide jusqu’au ' + new Date(activation.expiresAt).toLocaleString('fr-FR');
+        activationStepsEl.innerHTML = '';
+        activation.nextSteps.forEach((step) => {
+          const li = document.createElement('li');
+          li.textContent = step;
+          activationStepsEl.appendChild(li);
+        });
+        activationEl.classList.add('visible');
+      };
+
+      copyTokenBtn.addEventListener('click', async () => {
+        const token = activationTokenEl.textContent;
+        try {
+          await navigator.clipboard.writeText(token);
+          copyTokenBtn.textContent = 'Copié';
+          setTimeout(() => {
+            copyTokenBtn.textContent = 'Copier';
+          }, 1500);
+        } catch (error) {
+          console.warn('Clipboard not available', error);
+          alert('Copiez manuellement le jeton : ' + token);
+        }
+      });
 
       document.querySelectorAll('.select').forEach((button) => {
         button.addEventListener('click', (event) => {
@@ -179,6 +225,7 @@ const buildHtml = (clientId) => `<!doctype html>
           setStatus('Module prêt pour le paiement.', 'ready');
           document.querySelectorAll('.card').forEach((node) => node.classList.remove('active'));
           card.classList.add('active');
+          activationEl.classList.remove('visible');
         });
       });
     </script>
@@ -220,6 +267,9 @@ const buildHtml = (clientId) => `<!doctype html>
           }
           const payerName = details.payer?.name?.given_name || 'client';
           const captureId = details?.purchase_units?.[0]?.payments?.captures?.[0]?.id;
+          if (details.activation?.token) {
+            showActivation(details.activation);
+          }
           setStatus(
             'Paiement confirmé pour ' + payerName + (captureId ? ' · Réf. ' + captureId : '') + '.',
             'success'
@@ -258,6 +308,22 @@ const getAccessToken = async () => {
 const sendJson = (res, status, payload) => {
   res.writeHead(status, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify(payload));
+};
+
+const buildActivationPayload = (orderId, captureData) => {
+  const rawToken = crypto.randomBytes(10).toString('hex').toUpperCase();
+  const moduleId = captureData?.purchase_units?.[0]?.reference_id || 'module';
+  const expiresAt = new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString();
+  return {
+    token: `AIM-${moduleId.toUpperCase()}-${rawToken}`,
+    orderId,
+    expiresAt,
+    nextSteps: [
+      'Copiez le jeton dans votre orchestrateur IA.',
+      'Activez la mission et surveillez les métriques.',
+      'Contactez support@aimarket.ai en cas de blocage.'
+    ]
+  };
 };
 
 const server = http.createServer(async (req, res) => {
@@ -332,7 +398,14 @@ const server = http.createServer(async (req, res) => {
         }
       });
       const captureData = await response.json();
-      sendJson(res, response.status, captureData);
+      let payload = captureData;
+      if (response.ok) {
+        payload = {
+          ...captureData,
+          activation: buildActivationPayload(orderId, captureData)
+        };
+      }
+      sendJson(res, response.status, payload);
     } catch (error) {
       sendJson(res, 500, { error: error.message });
     }
